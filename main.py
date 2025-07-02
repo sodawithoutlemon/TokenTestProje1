@@ -57,7 +57,7 @@ class MainWindows(QWidget):
 
     def search_devices(self):
         # Gerçek cihaz arama yerine örnek veriler:
-        
+
 
         test_data = [
             {"ad": "Cihaz A", "oran": 10, "durum": "yükleniyor"},
