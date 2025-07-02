@@ -4,6 +4,14 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QTableWidget, QTableWidgetItem, QSizePolicy, QProgressBar, QFileDialog
 )
 import subprocess
+import subprocess
+import subprocess
+import json
+
+
+
+
+
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -113,13 +121,19 @@ class MainWindows(QWidget):
 
         #butonlar
         button_layout = QHBoxLayout()
+
         self.search_btn = QPushButton("Cihazları Ara")
-        self.search_btn.clicked.connect(self.search_devices)
+        self.search_btn.clicked.connect(lambda: self.search_devices(flag=True))
+
+        self.search_btnwo = QPushButton("Cihazları Ara (Portsuz)")
+        self.search_btnwo.clicked.connect(lambda: self.search_devices(flag=False))
+
         self.upload_btn = QPushButton("Cihazlara Yükle")
         self.upload_btn.clicked.connect(self.upload_to_devices)
         self.upload_btn.setEnabled(False)  # Başlangıçta kapalı
         button_layout.addWidget(self.search_btn)
         button_layout.addWidget(self.upload_btn)
+        button_layout.addWidget(self.search_btnwo)
         layout.addLayout(button_layout)
 
 
@@ -131,7 +145,39 @@ class MainWindows(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
-    def search_devices(self):
+    def get_usb_instanceid_with_port_info(self):
+        # Bu komut her USB cihaz için LocationInfo'yu detaylı şekilde alır
+        ps_command = r'''
+        $usbDevices = Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like "*USB*" }
+        $results = foreach ($dev in $usbDevices) {
+            $loc = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName 'DEVPKEY_Device_LocationInfo' -ErrorAction SilentlyContinue
+            [PSCustomObject]@{
+                InstanceId = $dev.InstanceId
+                Location   = if ($loc) { $loc.Data } else { $null }
+            }
+        }
+        $results | ConvertTo-Json
+        '''
+
+        result = subprocess.check_output(['powershell', '-Command', ps_command], encoding='utf-8')
+
+        devices = json.loads(result)
+        if isinstance(devices, dict):
+            devices = [devices]
+
+        return [
+            {
+                "instance_id": dev.get("InstanceId"),
+                "port": dev.get("Location")
+            }
+            for dev in devices
+        ]
+
+    # Test:
+
+
+
+    def search_devices(self, flag):
         #hafızayı temizledikten sonra
         #command line'a adb devices -l komutunu yapıştırarak bilgisayara bağlı cihazları
         #yakalar ve önemli bilgileri kırparak ekrana yansıtır
@@ -159,6 +205,49 @@ class MainWindows(QWidget):
                         device = part.split(":")[1]
                     elif part.startswith("model:"):
                         model = part.split(":")[1]
+
+                if(flag):
+                    #bağlı cihazın portunu bulmak için bütün bağlı cihazların usb değerlerini alır
+                    #sonrasında önceden kayıt ettiğimiz devicelerdeki seri numarasıyla karşılaştırarak
+                    #doğru portu ve doğru cihazı bulur ve eşleştirir
+
+                    def get_usb_instanceid_with_port_info():
+                        # Bu komut her USB cihaz için LocationInfo'yu detaylı şekilde alır
+                        ps_command = r'''
+                        $usbDevices = Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like "*USB*" }
+                        $results = foreach ($dev in $usbDevices) {
+                            $loc = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName 'DEVPKEY_Device_LocationInfo' -ErrorAction SilentlyContinue
+                            [PSCustomObject]@{
+                                InstanceId = $dev.InstanceId
+                                Location   = if ($loc) { $loc.Data } else { $null }
+                            }
+                        }
+                        $results | ConvertTo-Json
+                        '''
+
+                        result = subprocess.check_output(['powershell', '-Command', ps_command], encoding='utf-8')
+
+                        devices = json.loads(result)
+                        if isinstance(devices, dict):
+                            devices = [devices]
+
+                        return [
+                            {
+                                "instance_id": dev.get("InstanceId"),
+                                "port": dev.get("Location")
+                            }
+                            for dev in devices
+                        ]
+
+                    for d in get_usb_instanceid_with_port_info():
+                        if (d['instance_id'].split("\\")[2] == serial):
+                            # Port_#0002.Hub_#0001
+
+                            splited = d['port'].split(".")
+                            first = splited[0].split("#")
+                            second = splited[1].split("#")
+
+                            usbport = first[0][:-1] + ": " + first[1] + " / " + second[0][:-1] + ": " + second[1]
 
                 self.devices.append({
                     "serial": serial,
